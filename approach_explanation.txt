@@ -1,0 +1,70 @@
+Traffic Demand Prediction - Approach Explanation
+=================================================
+
+PROBLEM SUMMARY
+---------------
+Predict traffic demand (0-1 float) for given geohash locations at specific timestamps.
+Evaluation metric: max(0, 100 * R2_score)
+
+APPROACH
+--------
+We used LightGBM with 5-Fold Cross-Validation and extensive feature engineering.
+
+OOF R2 Score: ~0.9955  →  Competition Score: ~99.55 / 100
+
+FEATURE ENGINEERING
+-------------------
+1. Temporal Features:
+   - Parsed timestamp (H:MM) into hour and minute
+   - Time-of-day in minutes (0-1439)
+   - Cyclical encoding using sin/cos for hour and time_of_day (captures periodicity)
+   - Binary flags: is_morning_rush (7-9am), is_evening_rush (5-7pm), is_midday, is_night
+
+2. Road Features:
+   - RoadType ordinal encoding: Residential=1, Street=2, Highway=3 (missing=0)
+   - LargeVehicles binary: Allowed=1, Not Allowed=0
+   - Landmarks binary: Yes=1, No=0
+
+3. Weather & Temperature:
+   - Weather ordinal encoding: Sunny=3, Rainy=2, Foggy=1, Snowy=0
+   - Temperature filled with mean for missing values
+   - Temperature squared (non-linear temperature effects)
+
+4. Target Encoding (Most Powerful Features):
+   - Geohash statistics: mean, std, median, min, max of historical demand
+   - Geohash × Timestamp interaction: mean & std (captures location-specific time patterns)
+   - Timestamp global statistics: mean & std
+   - Hour-level statistics: mean & std
+   These features encode spatial and temporal demand patterns from training data.
+
+MODEL
+-----
+- LightGBM Regressor with 5-Fold Cross-Validation
+- Parameters:
+  - n_estimators: 2000 (with early stopping, patience=100)
+  - learning_rate: 0.03
+  - num_leaves: 127
+  - feature_fraction: 0.8, bagging_fraction: 0.8 (prevent overfitting)
+  - L1 (alpha=0.1) and L2 (lambda=0.1) regularization
+
+KEY INSIGHT
+-----------
+The geohash + timestamp interaction feature (geo_ts_mean) is the most powerful predictor.
+It captures the historical demand at a specific location at a specific time, which makes
+intuitive sense: rush hour demand at a highway junction is consistently high, while
+residential areas are quiet at night.
+
+Since test data is for day 49 but training has mostly day 48 data, the geohash-based
+historical features effectively transfer location patterns across days.
+
+TOOLS USED
+----------
+- Python 3, pandas, numpy
+- LightGBM for gradient boosting
+- scikit-learn (KFold, r2_score)
+
+FILES
+-----
+- traffic_demand_prediction.ipynb: Full Jupyter notebook with code
+- submission.csv: Predictions (41778 × 2, columns: Index, demand)
+- approach_explanation.txt: This file
